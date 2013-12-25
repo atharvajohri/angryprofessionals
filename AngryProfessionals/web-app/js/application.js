@@ -2,22 +2,80 @@ $(document).ready(function(){
 	resizeScreen();
 	$(window).resize(function(){
 		resizeScreen();
-	})
+	});
 	bindEvents();
 	setupPopups();
-	getPosts(null, function(){
-		setupMasonry();		
-	});
-	
 });
 
-var msnry; 
+var msnry, pm; 
+
+function getCurrentYear(){
+	return (new Date().getFullYear());
+}
 
 function bindEvents(){
 //	$("#signup").click(function(){
 //		$("#signup-popup").fadeIn(300);
 //	});
+	$("#ap-archives").click(function(){
+		window.location.hash = "archives";
+	});
+	$("#our-story-btn").click(function(e){
+		window.location.hash = "ourstory";
+		e.stopPropagation();
+	});
+	$("#header-content-container").click(function(){
+		window.location.hash = "";
+	});
+	$(window).bind('hashchange', function() {
+		$("#archive-filter").addClass("hide");
+		$("#ap-our-story").addClass("hide");
+		$("#posts-viewport").removeClass("hide");
+		var hash = window.location.hash;
+		if (hash == "#archives"){
+			showArchivesFilter();
+		}
+		else if (hash == "#ourstory"){
+			showOurStory();
+		}else {
+			if (msnry)
+				msnry.destroy();
+			getPosts(null, function(){
+				setupMasonry();		
+			});
+		}
+	});
 	
+	$(window).trigger("hashchange");
+}
+
+function showOurStory(){
+	$("#ap-our-story").removeClass("hide");
+	$("#posts-viewport").addClass("hide");
+}
+
+function showArchivesFilter(){
+	$("#archive-filter").removeClass("hide");
+	$("#af-year").val(getCurrentYear());
+	$("#af-search").click(function(){
+		var requestData = {
+			"title": $("#af-title").val(),
+			"year": $("#af-year").val(),
+			"month": $("#af-month").val()
+		};
+		$.ajax({
+			url:"/post/getFilteredPosts",
+			data: requestData,
+			success: function(data){
+				msnry.destroy();
+				$("#posts-viewport").html(data);
+				setupMasonry();
+			},
+			error: function(data){
+				showServerMessage("Something went wrong... Please try again later.");
+			}
+		});
+	});	
 }
 
 function setupMasonry(){
@@ -37,13 +95,7 @@ function getPosts(id, successCallback, prepend){
 		url : url,
 		type: "POST",
 		success: function(data){
-			if (prepend)
-				$("#posts-viewport").prepend(data);
-			else
-				$("#posts-viewport").html(data);
-			
-			if ( msnry )
-				msnry.prepended($(".post-"+id));
+			showPosts(data, prepend, id);
 			if (successCallback){
 				successCallback();
 			}
@@ -56,7 +108,19 @@ function getPosts(id, successCallback, prepend){
 	});
 }
 
+function showPosts(postData, prepend, id){
+	if (prepend)
+		$("#posts-viewport").prepend(postData);
+	else
+		$("#posts-viewport").html(postData);
+	
+	if ( msnry && id )
+		msnry.prepended($(".post-"+id));
+}
+
 function setupPopups(){
+	pm = new PostModel();
+	ko.applyBindings(pm, $("#add-advice-container")[0]);
 	$("#post-btn").click(function(){
 		$("#main-overlay").fadeIn(300);
 		$("body").addClass("no-scroll");
@@ -79,17 +143,59 @@ function setupPopups(){
 	
 	$(".add-advice-btn").die();
 	$(".add-advice-btn").live("click", function(){
-		$("#add-advice-container").fadeIn(300);
-		$("#main-overlay").fadeIn(300);
-		$("body").addClass("no-scroll");
-		$("#advice-id").val($(this).attr("rel"));
+		var post = $(this).attr("rel");
+		pm.advice([]);
+		getAdviceForPost(post, function(){
+			$("#add-advice-container").fadeIn(300);
+			$("#main-overlay").fadeIn(300);
+			$("body").addClass("no-scroll");
+			$("#advice-id").val(post);	
+		});
 	});
-	
 	centerPopups();
 }
 
+function PostModel(){
+	var self = this;
+	self.advice = ko.observableArray();
+	self.adviceExists = ko.computed(function(){
+		return advice.length > 0;
+	});
+}
+
+var Advice = function(){
+	var self = this;
+	
+	self.name = ko.observable();
+	self.text = ko.observable();
+}
+
+function populateAdvice(adviceSet){
+	
+}
+
+function getAdviceForPost(post, callback){
+	$.ajax({
+		url: "/post/getAdviceForPost",
+		data: {"post": post},
+		type: "POST",
+		success: function(adviceData){
+			for (var i in adviceData){
+				var adviceModel = new Advice();
+				adviceModel.name(adviceData[i].name);
+				adviceModel.text(adviceData[i].text);
+				pm.advice.push(adviceModel);
+			}
+			if (callback)
+				callback();
+		},
+		error: function(data){
+			console.log("error advice set");
+		}
+	});
+}
+
 function addAdviceCallback(data){
-	console.log(data);
 	if (data.blankText){
 		showServerMessage("Advice text cannot be empty.");
 		$(".advice-text-input").focus();
@@ -105,7 +211,6 @@ function addAdviceCallback(data){
 }
 
 function addPostCallback(data){
-	console.log(data);
 	if (data.blankText){
 		showServerMessage("Post text cannot be empty.");
 		$(".post-text").focus();
@@ -134,5 +239,6 @@ function centerPopups(){
 
 function resizeScreen(){
 	var bodyHeight = $(window).height() - $("#header-container").height() - $("#footer-container").height();
-	$("#body-container").css("min-height", bodyHeight+"px")	
+	$("#body-container").css("min-height", bodyHeight+"px")
+	$(".popup").css("max-height", ($(window).height()-100) + "px")
 }

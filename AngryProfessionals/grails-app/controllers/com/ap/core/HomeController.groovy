@@ -2,5 +2,7 @@ package com.ap.core
 
 class HomeController {
 
-    def index() { }
+    def index() { 
+		
+	}
 }
